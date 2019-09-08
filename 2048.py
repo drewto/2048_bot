@@ -286,32 +286,89 @@ def print_transition(boards, direction):
 
 def auto_play():
 
-
-	current_game_data = {}
-
+	# Start
 	game = Game()
 	history_tree = {}
+	game.add_random_tile()
+
+	while(game.game_status == 'playing'):
+		sleep(0.05)
+
+
+		#game.print_board_verbose()
+
+
+		# Export the game data to be used for predictions
+		game_data = copy.deepcopy(game.export_game_data())
+
+		# try all possible moves for the next n moves and see which results in the highest score
+
+		direction_scores = {}
+		for direction in DIRECTION_OPTIONS:
+			current_game = Game()
+			current_game.set_game_data(copy.deepcopy(game_data))
+			current_game.move(direction)
+			current_game_data = copy.deepcopy(current_game.export_game_data())
+			all_games = get_all_possible_games_after_n_moves(100, current_game_data)
+
+			# Calculate the average score in the resulting games
+			total_score = 0
+			for game_data_iteration in all_games:
+				total_score += game_data_iteration['score']
+			average_score = total_score / len(all_games)
+
+			direction_scores[direction] = average_score
+
+		# Make the next move based on the highest score
+
+		def sort_key(item):
+			return item[1]
+
+		# Sort the best directions
+		sorted_directions = list(direction_scores.items())
+		sorted_directions.sort(key = sort_key, reverse = True)
+
+		# Iterate by highest average score
+		for direction in sorted_directions:
+			if game.move(direction[0]):
+
+				# Add a tile to the game
+				middle_board = copy.deepcopy(game.export_game_data()['board_data'])
+				game.add_random_tile()
+
+				print("Average score for that direction: {}".format(direction[1]))
+				print_transition([game_data['board_data'], middle_board, game.export_game_data()['board_data']], direction[0])
+				break
+
+
+	print("Game over")
+	game.print_board_verbose()
+	return game.score
+	
+
+def get_all_possible_games_after_n_moves(number_of_moves, starting_game_data):
+
+	current_game_data = starting_game_data
+	top_scorer = starting_game_data
+
 	new_game_iterations = []
-	game_data = game.export_game_data()
-	top_scorer = game_data
-	new_game_iterations.append(game_data)
-	del game
+	new_game_iterations.append(starting_game_data)
 
 	iteration_count = 0
 
-	while(len(new_game_iterations) > 0):
+	while(len(new_game_iterations) > 0 and current_game_data['added_tiles_count'] < number_of_moves and iteration_count < 10000):
 		iteration_count += 1
-		print("Iteration: {}".format(iteration_count))
+		#print("Iteration: {}".format(iteration_count))
 		if iteration_count % 1000 == 0:
 			file = open("results.json", "w")
-			for row in range(BOARD_DIMENSIONS['row']):
-				row_string = '|\t'
-				for col in range(BOARD_DIMENSIONS['col']):
-					row_string += str(top_scorer['board_data'][row][col])
-					row_string += '\t|\t'
-				file.write("|---------------------------------------|\n")
-				file.write(row_string + '\n')
-			file.write("|---------------------------------------|\n")
+			"""for row in range(BOARD_DIMENSIONS['row']):
+													row_string = '|\t'
+													for col in range(BOARD_DIMENSIONS['col']):
+														row_string += str(top_scorer['board_data'][row][col])
+														row_string += '\t|\t'
+													file.write("|---------------------------------------|\n")
+													file.write(row_string + '\n')
+												file.write("|---------------------------------------|\n")"""
 		'''if len(new_game_iterations) > 100:
 			def sort_key(iteration):
 				return iteration['score'] / iteration['added_tiles_count']
@@ -319,7 +376,7 @@ def auto_play():
 			new_game_iterations = new_game_iterations[:20]'''
 
 		#csleep(0.005)
-		current_game_data = new_game_iterations.pop()
+		current_game_data = new_game_iterations.pop(0)
 
 		current_game = Game()
 		current_game.set_game_data(current_game_data)
@@ -328,7 +385,7 @@ def auto_play():
 		current_board_layout = copy.deepcopy(current_game.board_data)
 
 		# Add a tile to the game
-		print("Current tiles added: {}".format(current_game_data['added_tiles_count']))
+		#print("Current tiles added: {}".format(current_game_data['added_tiles_count']))
 		current_game.add_random_tile()
 
 		current_game_data = current_game.export_game_data()
@@ -356,21 +413,34 @@ def auto_play():
 		# Clear other data
 		current_board_layout = []
 		post_add_tile_board_layout = []
-		current_game.print_board_verbose()
-		print("History length: {}".format(len(current_game.history)))
+		#current_game.print_board_verbose()
+		#print("History length: {}".format(len(current_game.history)))
 		del current_game
 
 		if top_scorer['score'] < current_game_data['score']:
 			top_scorer = current_game_data
 
-		print("New game iterations: {}".format(len(new_game_iterations)))
+		#print("New game iterations: {}".format(len(new_game_iterations)))
 
-	file = open("results.json", "w")
-	for row in range(BOARD_DIMENSIONS['row']):
-		file.write(top_scorer["board_data"][row])
-		file.write('\n')
+
+
+	"""file = open("results.json", "w")
+				for row in range(BOARD_DIMENSIONS['row']):
+					file.write(top_scorer["board_data"][row])
+					file.write('\n')"""
 	#json.dumps(top_scorer, file)
+	return new_game_iterations
 
+def auto_play_loop():
+	top_score = 0
+	total_iterations = 0
+	while(True):
+		total_iterations += 1
+		score = auto_play()
+		if score > top_score:
+			top_score = score
+		sleep(1.5)
+		print("Top score: {}\nTotal iterations: {}".format(top_score, total_iterations))
 
 def normal_play():
 	game = Game()
@@ -382,8 +452,7 @@ def normal_play():
 
 def main():
 	#normal_play()
-	auto_play()
-
+	auto_play_loop()
 
 if __name__ == '__main__':
 	main()
